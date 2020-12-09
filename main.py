@@ -5,11 +5,10 @@ import evaluate
 import gen_test
 
 converter = IFConverter()
-converter.get_implicit_feedback('./data/Triplets.csv')
-
-gen_test.gen_fake_R_train('./data/R-full.txt')
-print("Convert successfully!")
-with open('./data/R-train.txt', 'r') as f:
+# converter.get_implicit_feedback('./data/Triplets.csv')
+# gen_test.gen_fake_R_train('./data/R-full.txt')
+# print("Convert successfully!")
+with open('./data/R-full.txt', 'r') as f:
     converter.R = [[float(num) for num in line[:-1].split(' ')] for line in f]
     converter.R = np.array(converter.R)
 converter.convert()
@@ -23,7 +22,7 @@ wmf.fit()
 
 # Evaluate MAR@k of first n users
 k = 20
-n_users = 2473
+n_users = 100
 predicts = [wmf.get_recommendations(user, k) for user in range(n_users)]
 with open('./data/R-full.txt', 'r') as f:
     targets = [[float(num) for num in line[:-1].split(' ')] for line in f]

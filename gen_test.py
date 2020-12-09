@@ -35,10 +35,5 @@ def gen_fake_R_train(path_to_R_full, gap_ratio=0.1):
     np.savetxt('./data/R-train.txt', R, delimiter=' ', fmt='%d')
 
 
-<<<<<<< HEAD
-# gen_fake_R(1000, 2000)
+# gen_fake_R(100, 200)
 gen_fake_R_train('./data/R-full.txt')
-=======
-gen_fake_R(100, 200)
-#gen_fake_R_train('./data/R-full.txt')
->>>>>>> fb9c6c6451b96c42d11ec77c830513dec95297fb
