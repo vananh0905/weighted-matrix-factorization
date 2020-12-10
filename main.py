@@ -16,12 +16,14 @@ P, C = converter.P, converter.C
 dict_item, dict_user = converter.get_dictionary()
 
 wmf = WeightedMF(P, C, depth=40, early_stopping=False)
+clock = evaluate.Clock()
 wmf.fit()
+clock.stop()
 # wmf.save()
 # wmf.load()
 
 # Evaluate MAR@k of first n users
-k = 10
+k = 20
 n_users = 100
 predicts = [wmf.get_recommendations(user, k) for user in range(n_users)]
 with open('./data/R-full.txt', 'r') as f:

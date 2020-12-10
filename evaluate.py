@@ -1,4 +1,5 @@
 import numpy as np
+import time
 
 
 def ark(predict, target, k):
@@ -25,3 +26,10 @@ def mark(predicts, targets, k):
     for i in range(size_eval):
         scores.append(ark(predicts[i], targets[i], k))
     return np.mean(scores)
+
+class Clock:
+    def __init__(self):
+        self.start_time = time.time()
+
+    def stop(self):
+        print("Training time: {:.3f} seconds".format(time.time() - self.start_time))
