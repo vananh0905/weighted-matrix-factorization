@@ -5,15 +5,13 @@ import os.path
 class WeightedMF:
     """
     Do weighted matrix factorization by gradient descent
-    Argument:
+    Arguments:
         - P, C: P, C matrices
         - dict_user, dict_item: mapping between name and index of users and items
-        - optimizer: approach to train. There are 3 choices: use formula, use derivative with sdg, use derivative with gd
         - depth: number of latent features. Default: 5
-        - n_epochs: number of epochs to train. Default: 200
+        - n_epochs: number of epochs to train. Default: 10
         - lr: learning rate. Default: 1e-6
         - rgl: regularization value (lambda). Default: 0.02
-        - graph_inferred: if True, implicit feedback is filled by neighborhood users (useful for sparse P matrix). Default: False
         - early_stopping: if True, stop early in gradient descent when loss may not improve; otherwise, train to the last epoch. Default: True
         - verbose: if True, print out the information of process. Default: False
         - U, I: hidden representation for each user, item
@@ -24,7 +22,7 @@ class WeightedMF:
         - save(), load(): save and load U, I if they have been calculated already
 
     """
-    def __init__(self, P, C, n_epochs=0, optimizer='formula', depth=5, lr=1e-6, rgl=0.02, batch_size=0, early_stopping=True, verbose=False):
+    def __init__(self, P, C, n_epochs=10, depth=5, lr=1e-6, rgl=0.02, early_stopping=True, verbose=False):
         self.P = P
         self.C = C
         self.n_users = P.shape[0]
@@ -38,127 +36,37 @@ class WeightedMF:
         self.lr = lr
         self.verbose = verbose
         self.early_stopping = early_stopping
-        self.optimizer = optimizer
-        if n_epochs == 0:
-            if optimizer == 'sgd':
-                self.n_epochs = 20
-            elif optimizer == 'gd':
-                self.n_epochs = 200
-            elif optimizer == 'formula':
-                self.n_epochs = 10
-        else:
-            self.n_epochs = n_epochs
-        if batch_size == 0:
-            self.batch_size = int(self.n_items * self.n_users / 100)
-
-    def __gd(self):
-        dU = np.zeros_like(self.U)
-        dI = np.zeros_like(self.I)
-
-        for i in range(self.n_users):
-            for j in range(self.n_items):
-                dU[i] += 2 * self.C[i, j] * (np.dot(self.U[i], self.I[:, j]) - self.P[i, j]) \
-                         * self.I[:, j]
-            dU[i] += 2 * self.rgl * self.U[i]
-
-        for j in range(self.n_items):
-            for i in range(self.n_users):
-                dI[:, j] += 2 * self.C[i, j] * (np.dot(self.U[i, :], self.I[:, j]) - self.P[i, j]) \
-                            * self.U[i, :]
-            dI[:, j] += 2 * self.rgl * self.I[:, j]
-
-        self.U -= self.lr * dU
-        self.I -= self.lr * dI
-
-    def __sgd(self):
-        dU = np.zeros_like(self.U)
-        dI = np.zeros_like(self.I)
-
-        X = []
-        Y = []
-        mark = np.zeros_like(self.C)
-        index = 0
-        t = int(self.n_users*self.n_items)
-        while index < t:
-            x = np.random.randint(self.n_users)
-            y = np.random.randint(self.n_items)
-            if mark[x, y] == 0:
-                mark[x, y] = 1
-                X.append(x)
-                Y.append(y)
-                index += 1
-
-        n_steps = int(self.n_items * self.n_users / self.batch_size)
-        for s in range(n_steps):
-            for u in range(self.batch_size):
-                i = X[s*self.batch_size + u]
-                j = Y[s*self.batch_size + u]
-                dU[i] += 2 * self.C[i, j] * (np.dot(self.U[i, :], self.I[:, j]) - self.P[i, j]) \
-                             * self.I[:, j]
-                dU[i] += 2 * self.rgl * self.U[i]
-
-                dI[:, j] += 2 * self.C[i, j] * (np.dot(self.U[i, :], self.I[:, j]) - self.P[i, j]) \
-                                * self.U[i, :]
-                dI[:, j] += 2 * self.rgl * self.I[:, j]
-            self.U -= self.lr * dU
-            self.I -= self.lr * dI
-
-    def __fit_formula(self):
-        loss = 0
-        for current_epoch in range(self.n_epochs):
-            prev_loss = loss
-            for i in range(self.n_users):
-                C_u = np.zeros((self.n_items, self.n_items))
-                E = np.zeros((self.depth, self.depth))
-                for j in range(self.n_items):
-                    C_u[j, j] = self.C[i, j]
-                self.U[i] = np.dot(
-                    np.dot(np.dot(np.linalg.inv(np.dot(np.dot(self.I, C_u), self.I.T) + self.rgl * E), self.I), C_u),
-                    self.P[i].T).T
-            for i in range(self.n_users):
-                C_i = np.zeros((self.n_users, self.n_users))
-                E = np.zeros((self.depth, self.depth))
-                for j in range(self.n_users):
-                    C_i[j, j] = self.C[i, j]
-                self.I[:, i] = np.dot(
-                    np.dot(np.dot(np.linalg.inv(np.dot(np.dot(self.U.T, C_i), self.U) + self.rgl * E), self.U.T), C_i),
-                    self.P[:, i])
-            loss = np.sqrt(np.sum((np.dot(self.U, self.I) - self.P) ** 2) / (self.n_users * self.n_items))
-            # Run at least 5 epochs
-            if self.early_stopping and current_epoch > 5:
-                if prev_loss - loss < 0.0001:
-                    break
-            if self.verbose:
-                print("Training at {}th epoch".format(current_epoch + 1))
-                print("Avg. loss: {:.5f}".format(loss))
-
-    def __fit_derivative(self):
-        loss = 0
-        for current_epoch in range(self.n_epochs):
-            prev_loss = loss
-            loss = 0
-            if self.verbose:
-                print("Processing epoch {}".format(current_epoch+1))
-            for i in range(self.n_users):
-                for j in range(self.n_items):
-                    loss += self.C[i, j] * (np.dot(self.U[i, :], self.I[:, j]) - self.P[i, j]) ** 2
-            loss = loss + self.rgl * (np.sum(self.U ** 2) + np.sum(self.I ** 2))
-            if self.verbose:
-                print("Loss at epoch {}: {:.3f}".format(current_epoch+1, loss))
-            if self.early_stopping and current_epoch > 1 and (prev_loss - loss < 0.001):
-                return None
-            else:
-                if self.optimizer == 'gd':
-                    self.__gd()
-                else:
-                    self.__sgd()
+        self.n_epochs = n_epochs
 
     def fit(self):
         if not self.is_loaded:
-            if self.optimizer == 'formula':
-                self.__fit_formula()
-            else:
-                self.__fit_derivative()
+            loss = 0
+            for current_epoch in range(self.n_epochs):
+                prev_loss = loss
+                for i in range(self.n_users):
+                    C_u = np.zeros((self.n_items, self.n_items))
+                    E = np.zeros((self.depth, self.depth))
+                    for j in range(self.n_items):
+                        C_u[j, j] = self.C[i, j]
+                    self.U[i] = np.dot(
+                        np.dot(np.dot(np.linalg.inv(np.dot(np.dot(self.I, C_u), self.I.T) + self.rgl * E), self.I), C_u),
+                        self.P[i].T).T
+                for i in range(self.n_users):
+                    C_i = np.zeros((self.n_users, self.n_users))
+                    E = np.zeros((self.depth, self.depth))
+                    for j in range(self.n_users):
+                        C_i[j, j] = self.C[i, j]
+                    self.I[:, i] = np.dot(
+                        np.dot(np.dot(np.linalg.inv(np.dot(np.dot(self.U.T, C_i), self.U) + self.rgl * E), self.U.T), C_i),
+                        self.P[:, i])
+                loss = np.sqrt(np.sum((np.dot(self.U, self.I) - self.P) ** 2) / (self.n_users * self.n_items))
+                # Run at least 5 epochs
+                if self.early_stopping and current_epoch > 5:
+                    if prev_loss - loss < 0.0001:
+                        break
+                if self.verbose:
+                    print("Training at {}th epoch".format(current_epoch + 1))
+                    print("Avg. loss: {:.5f}".format(loss))
         self.predict = np.dot(self.U, self.I)
 
     def get_recommendations(self, user_index, n_rec_items):
